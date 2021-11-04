@@ -870,6 +870,12 @@ static GtkWidget *create_window(Client *c)
         window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
         gtk_window_set_role(GTK_WINDOW(window), PROJECT_UCFIRST);
         gtk_window_set_default_size(GTK_WINDOW(window), WIN_WIDTH, WIN_HEIGHT);
+        gtk_widget_set_app_paintable(GTK_WIDGET(window), TRUE);
+        GdkScreen *screen = gtk_window_get_screen(GTK_WINDOW(window));
+        GdkVisual *visual = gdk_screen_get_rgba_visual(screen);
+        if (visual) {
+            gtk_widget_set_visual(GTK_WIDGET(window), visual);
+        }
         if (!vb.no_maximize) {
             gtk_window_maximize(GTK_WINDOW(window));
         }
@@ -2017,6 +2023,7 @@ static WebKitWebView *webview_new(Client *c, WebKitWebView *webview)
     WebKitWebView *new;
     WebKitUserContentManager *ucm;
     WebKitWebContext *webcontext;
+    GdkRGBA background;
 
     /* create a new webview */
     ucm = webkit_user_content_manager_new();
@@ -2031,6 +2038,9 @@ static WebKitWebView *webview_new(Client *c, WebKitWebView *webview)
                     "web-context", vb.webcontext,
                     NULL));
     }
+
+    gdk_rgba_parse(&background, "rgba(0,0,0,0)");
+    webkit_web_view_set_background_color(new, &background);
 
     g_object_connect(
         G_OBJECT(new),
