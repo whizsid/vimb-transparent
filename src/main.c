@@ -19,6 +19,7 @@
 
 #include "config.h"
 #include <gtk/gtk.h>
+#include <pthread.h>
 #ifndef FEATURE_NO_XEMBED
 #include <gdk/gdkx.h>
 #include <gtk/gtkx.h>
@@ -49,6 +50,8 @@
 #include "util.h"
 #include "autocmd.h"
 #include "file-storage.h"
+#define __USE_XOPEN2K
+#include "preference.h"
 
 static void client_destroy(Client *c);
 static Client *client_new(WebKitWebView *webview);
@@ -2183,6 +2186,12 @@ static gboolean autocmdOptionArgFunc(const gchar *option_name,
     return TRUE;
 }
 
+void preference_apply(Preference *preference, void *args) {
+    Client *client = args;
+
+    // gtk_widget_override_background_color(GTK_WIDGET(client->statusbar.box), GTK_STATE_FLAG_NORMAL, &preference->background);
+}
+
 int main(int argc, char* argv[])
 {
     Client *c;
@@ -2284,10 +2293,12 @@ int main(int argc, char* argv[])
         vb_load_uri(c, &(Arg){TARGET_CURRENT, argv[argc - 1]});
     }
 
+    preference_watch(preference_apply, c);
     gtk_main();
 #ifdef FREE_ON_QUIT
     vimb_cleanup();
 #endif
+    pthread_exit(NULL);
 
     return EXIT_SUCCESS;
 }

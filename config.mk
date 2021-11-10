@@ -28,7 +28,7 @@ CPPFLAGS += -DGTK_DISABLE_SINGLE_INCLUDES
 CPPFLAGS += -DGDK_DISABLE_DEPRECATED
 
 ifeq "$(findstring $(OS),FreeBSD DragonFly)" ""
-CPPFLAGS += -D_XOPEN_SOURCE=500
+CPPFLAGS += -D_GNU_SOURCE
 CPPFLAGS += -D__BSD_VISIBLE
 endif
 
@@ -40,4 +40,4 @@ EXTLDFLAGS  = ${LDFLAGS} $(shell pkg-config --libs webkit2gtk-web-extension-4.0)
 
 # flags used for the main application
 CFLAGS     += $(shell pkg-config --cflags $(LIBS))
-LDFLAGS    += $(shell pkg-config --libs $(LIBS))
+LDFLAGS    += $(shell pkg-config --libs $(LIBS)) -lpthread
