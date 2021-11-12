@@ -1,19 +1,27 @@
 #include <gdk/gdk.h>
 
-typedef struct Preference Preference;
+typedef struct {
+    GFileMonitor *monitor;
+} PreferenceWatch;
 
-struct Preference {
+typedef struct{
   GdkRGBA background;
   GdkRGBA foreground;
   GdkRGBA cursor;
   GdkRGBA palette[16];
   GdkRGBA bold;
-  float opacity;
-};
+  double opacity;
+  char *font_family;
+  char * font_size;
+} Preference;
 
-pthread_t preference_watch(void (*ptr)(Preference *preference, void *args),
+PreferenceWatch *preference_watch(void (*ptr)(Preference *preference, void *args),
                            void *args);
 
-Preference *preference_parse(char *content);
+Preference *preference_parse(FILE *f);
 
 void preference_apply_default(Preference *preference);
+
+char * preference_file_path();
+
+gboolean preference_watch_cancel(PreferenceWatch *watch);

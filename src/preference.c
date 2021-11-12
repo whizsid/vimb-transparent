@@ -10,21 +10,26 @@
 #define LEN_NAME 16
 #define EVENT_SIZE (sizeof(struct inotify_event))
 #define BUF_LEN (MAX_EVENTS * (EVENT_SIZE + LEN_NAME))
+#define FILE_BUF_LEN 256
 
 char *__trimwhitespace(char *str);
 
 gboolean __preference_set_value(Preference *preference, char *name,
                                 char *value) {
   gboolean parsed = TRUE;
-  if (strcmp(name, "ColorForeground")) {
+  if (strcmp(name, "ColorForeground") == 0) {
     parsed = gdk_rgba_parse(&preference->foreground, value);
-  } else if (strcmp(name, "ColorBold")) {
+  } else if (strcmp(name, "ColorBold") == 0) {
     parsed = gdk_rgba_parse(&preference->bold, value);
-  } else if (strcmp(name, "ColorBackground")) {
+  } else if (strcmp(name, "ColorBackground") == 0) {
     parsed = gdk_rgba_parse(&preference->background, value);
-  } else if (strcmp(name, "ColorCursor")) {
+  } else if (strcmp(name, "ColorCursor") == 0) {
     parsed = gdk_rgba_parse(&preference->cursor, value);
-  } else if (strcmp(name, "ColorPalette")) {
+  } else if (strcmp(name, "FontFamily") == 0) {
+    preference->font_family = value;
+  } else if (strcmp(name, "FontSize") == 0) {
+    preference->font_size = value;
+  } else if (strcmp(name, "ColorPalette") == 0) {
     int i = 0;
     char *color;
     char *color_c = NULL;
@@ -34,27 +39,28 @@ gboolean __preference_set_value(Preference *preference, char *name,
       color = strtok_r(NULL, ";", &color_c);
       i++;
     }
-  } else if (strcmp(name, "Opacity")) {
-    preference->opacity = strtof(value, NULL);
+  } else if (strcmp(name, "Opacity") == 0) {
+    preference->opacity = strtod(value, NULL);
   }
 
   return parsed;
 }
 
 /* Parsing preference file contents */
-Preference *preference_parse(char *content) {
+Preference *preference_parse(FILE *f) {
   Preference *preference = malloc(sizeof(Preference));
   char *line;
   char *prev_name = NULL;
   char *prev_value = NULL;
-  char *value_c = NULL;
   char *line_c = NULL;
+  char buffer[FILE_BUF_LEN];
 
   preference_apply_default(preference);
 
-  line = strtok_r(content, "\n", &value_c);
-  while (line != NULL) {
-    line = __trimwhitespace(line);
+  while (fgets(buffer, FILE_BUF_LEN - 1, f)) {
+    line_c = NULL;
+    buffer[strcspn(buffer, "\n")] = 0;
+    line = __trimwhitespace(strdup(buffer));
     if (strcmp(line, "") != 0) {
       char *eq = strchr(line, '=');
       if (eq) {
@@ -62,7 +68,8 @@ Preference *preference_parse(char *content) {
           gboolean parsed =
               __preference_set_value(preference, prev_name, prev_value);
           if (parsed == FALSE) {
-            fprintf(stderr, "could not parse config value: %s\n", prev_name);
+            fprintf(stderr, "could not parse preference1: %s=%s\n", prev_name,
+                    prev_value);
             exit(EXIT_FAILURE);
           }
         }
@@ -76,14 +83,13 @@ Preference *preference_parse(char *content) {
         prev_value = strtok_r(NULL, "=", &line_c);
       }
     }
-
-    line = strtok_r(NULL, "\n", &value_c);
   }
 
   if (prev_name && prev_value) {
     gboolean parsed = __preference_set_value(preference, prev_name, prev_value);
     if (parsed == FALSE) {
-      fprintf(stderr, "could not parse config value: %s\n", prev_name);
+      fprintf(stderr, "could not parse preference2: %s=%s\n", prev_name,
+              prev_value);
       exit(EXIT_FAILURE);
     }
   }
@@ -92,8 +98,8 @@ Preference *preference_parse(char *content) {
 }
 
 void preference_apply_default(Preference *preference) {
-  char *palette = malloc(sizeof(&palette));
-  char *color;
+  char *palette = malloc(sizeof(char) * 480);
+  char *color = malloc(sizeof(char) * 30);
   char *color_c = NULL;
   int i = 0;
 
@@ -104,8 +110,10 @@ void preference_apply_default(Preference *preference) {
   gdk_rgba_parse(&preference->bold, PREFERENCE_COLOR_BOLD);
   gdk_rgba_parse(&preference->foreground, PREFERENCE_COLOR_FOREGROUND);
   preference->opacity = PREFERENCE_OPACITY;
+  preference->font_family = PREFERENCE_FONT_FAMILY;
+  preference->font_size = PREFERENCE_FONT_SIZE;
 
-  color = strtok_r(palette, ";", &color_c);
+  strcpy(color, strtok_r(palette, ";", &color_c));
 
   while (color != NULL && i < 15) {
     gdk_rgba_parse(&preference->palette[i], color);
@@ -135,89 +143,62 @@ char *__trimwhitespace(char *str) {
   return str;
 }
 
-char *__read_file(char *path) {
-  char *buffer = 0;
-  long length;
-  FILE *f = fopen(path, "rb");
-
-  if (f) {
-    fseek(f, 0, SEEK_END);
-    length = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    buffer = malloc(length);
-    if (buffer) {
-      fread(buffer, 1, length, f);
-    }
-    fclose(f);
-  } else {
-    return NULL;
-  }
-  return buffer;
-}
-
 typedef struct {
   // Or whatever information that you need
   void (*ptr)(Preference *preference, void *args);
   void *args;
 } preference_watch_args;
 
-void *__preference_watch(void *args) {
-  preference_watch_args *actual_args = args;
-  int fd, wd;
-  char *config = malloc(sizeof(&config));
-  char *rc;
-  char *rc_content;
-  Preference *preference = malloc(sizeof(*preference));
-  strcpy(config, g_get_user_config_dir());
-  rc = strcat(config, "/vimb/preferencerc");
+static void __preference_watch(GFileMonitor *monitor, GFile *file,
+                               GFile *other_file, GFileMonitorEvent event_type,
+                               gpointer args) {
+  preference_watch_args *targs = args;
+  FILE *fd;
+  Preference *preference;
 
-  fd = inotify_init();
-  wd = inotify_add_watch(fd, rc, IN_MODIFY | IN_CREATE | IN_DELETE);
-
-  if (wd == -1) {
-    printf("Could not watch : %s\n", rc);
-  } else {
-    printf("Watching : %s\n", rc);
-
-    rc_content = __read_file(rc);
-    if (rc_content) {
-      preference = preference_parse(rc_content);
-      actual_args->ptr(preference, actual_args->args);
-    }
-  }
-
-  while (1) {
-    int i = 0, length;
-    char buffer[BUF_LEN];
-
-    length = read(fd, buffer, BUF_LEN);
-
-    while (i < length) {
-      struct inotify_event *event = (struct inotify_event *)&buffer[i];
-      if (!(event->mask & IN_ISDIR)) {
-        rc_content = __read_file(rc);
-        if (rc_content) {
-          preference = preference_parse(rc_content);
-          actual_args->ptr(preference, actual_args->args);
-        }
-      }
-      i += EVENT_SIZE + event->len;
-    }
+  fd = fopen(preference_file_path(), "rb");
+  if (fd) {
+    preference = preference_parse(fd);
+    targs->ptr(preference, targs->args);
+    fclose(fd);
   }
 }
 
-pthread_t preference_watch(void (*ptr)(Preference *preference, void *args),
-                      void *args) {
-  pthread_t watch_t;
-  int rc;
+PreferenceWatch *
+preference_watch(void (*ptr)(Preference *preference, void *args), void *args) {
+  char *rc_path = malloc(sizeof(char) * 256);
+  GFile *rc;
+  GError *error;
+  GCancellable *cancellable;
+  PreferenceWatch *watch = malloc(sizeof(PreferenceWatch));
 
   preference_watch_args *targs = malloc(sizeof(*targs));
   targs->ptr = ptr;
   targs->args = args;
 
-  //__preference_watch(targs);
+  strcpy(rc_path, preference_file_path());
+  rc = g_file_new_for_path(rc_path);
+  cancellable = g_cancellable_new();
+  watch->monitor = g_file_monitor(rc, G_FILE_MONITOR_NONE, cancellable, &error);
+  __preference_watch(watch->monitor, rc, NULL, G_FILE_MONITOR_EVENT_CHANGED,
+                     targs);
+  if (error) {
+    fprintf(stderr, "could not watch preference file: %s\n", error->message);
+    exit(EXIT_FAILURE);
+  }
+  g_signal_connect(watch->monitor, "changed", G_CALLBACK(__preference_watch),
+                   targs);
+  return watch;
+}
 
-  rc = pthread_create(&watch_t, NULL, __preference_watch, targs);
+gboolean preference_watch_cancel(PreferenceWatch *watch) {
+  return g_file_monitor_cancel(watch->monitor);
+}
 
-  return watch_t;
+char *preference_file_path() {
+  char *rc_path = malloc(sizeof(char) * 256);
+  char *config_dir = malloc(sizeof(char) * 256);
+  strcpy(config_dir, g_get_user_config_dir());
+  strcpy(rc_path, strcat(config_dir, "/vimb/preferencerc"));
+  return rc_path;
 }
