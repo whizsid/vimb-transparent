@@ -14,6 +14,7 @@ options:
 	@echo "CFLAGS    = $(CFLAGS)"
 	@echo "LDFLAGS   = $(LDFLAGS)"
 	@echo "EXTCFLAGS = $(EXTCFLAGS)"
+	@echo "GICFLAGS = $(GICFLAGS)"
 	@echo "CC        = $(CC)"
 
 install: all
@@ -23,6 +24,7 @@ install: all
 	@# extension
 	install -d $(LIBDIR)
 	install -m 644 src/webextension/$(EXTTARGET) $(LIBDIR)/$(EXTTARGET)
+	install -m 644 src/glassit/$(GITARGET) $(LIBDIR)/$(GITARGET)
 	@# man page
 	install -d $(MANPREFIX)/man1
 	@sed -e "s!VERSION!$(version)!g" \
@@ -36,6 +38,7 @@ uninstall:
 	$(RM) $(BINPREFIX)/vimb
 	$(RM) $(DESTDIR)$(MANDIR)/man1/vimb.1
 	$(RM) $(LIBDIR)/$(EXTTARGET)
+	$(RM) $(LIBDIR)/$(GITARGET)
 	$(RM) $(DOTDESKTOPPREFIX)/vimb.desktop
 
 clean: src.subdir-clean test-clean

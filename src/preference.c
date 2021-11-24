@@ -12,88 +12,80 @@
 #define BUF_LEN (MAX_EVENTS * (EVENT_SIZE + LEN_NAME))
 #define FILE_BUF_LEN 256
 
-char *__trimwhitespace(char *str);
+void preference_color_parse(GKeyFile *kfile, gchar *name, GdkRGBA *color) {
+  GError *error = NULL;
+  gchar *value = malloc(sizeof(gchar) * 30);
+  gboolean parsed = FALSE;
 
-gboolean __preference_set_value(Preference *preference, char *name,
-                                char *value) {
-  gboolean parsed = TRUE;
-  if (strcmp(name, "ColorForeground") == 0) {
-    parsed = gdk_rgba_parse(&preference->foreground, value);
-  } else if (strcmp(name, "ColorBold") == 0) {
-    parsed = gdk_rgba_parse(&preference->bold, value);
-  } else if (strcmp(name, "ColorBackground") == 0) {
-    parsed = gdk_rgba_parse(&preference->background, value);
-  } else if (strcmp(name, "ColorCursor") == 0) {
-    parsed = gdk_rgba_parse(&preference->cursor, value);
-  } else if (strcmp(name, "FontFamily") == 0) {
-    preference->font_family = value;
-  } else if (strcmp(name, "FontSize") == 0) {
-    preference->font_size = value;
-  } else if (strcmp(name, "ColorPalette") == 0) {
-    int i = 0;
-    char *color;
-    char *color_c = NULL;
-    color = strtok_r(value, ";", &color_c);
-    while (color != NULL && i < 16) {
-      parsed = parsed && gdk_rgba_parse(&preference->palette[i], color);
-      color = strtok_r(NULL, ";", &color_c);
-      i++;
-    }
-  } else if (strcmp(name, "Opacity") == 0) {
-    preference->opacity = strtod(value, NULL);
-  }
-
-  return parsed;
-}
-
-/* Parsing preference file contents */
-Preference *preference_parse(FILE *f) {
-  Preference *preference = malloc(sizeof(Preference));
-  char *line;
-  char *prev_name = NULL;
-  char *prev_value = NULL;
-  char *line_c = NULL;
-  char buffer[FILE_BUF_LEN];
-
-  preference_apply_default(preference);
-
-  while (fgets(buffer, FILE_BUF_LEN - 1, f)) {
-    line_c = NULL;
-    buffer[strcspn(buffer, "\n")] = 0;
-    line = __trimwhitespace(strdup(buffer));
-    if (strcmp(line, "") != 0) {
-      char *eq = strchr(line, '=');
-      if (eq) {
-        if (prev_name != NULL && prev_value != NULL) {
-          gboolean parsed =
-              __preference_set_value(preference, prev_name, prev_value);
-          if (parsed == FALSE) {
-            fprintf(stderr, "could not parse preference1: %s=%s\n", prev_name,
-                    prev_value);
-            exit(EXIT_FAILURE);
-          }
-        }
-        prev_name = strtok_r(line, "=", &line_c);
-        prev_value = strtok_r(NULL, "=", &line_c);
-      } else if (prev_value) {
-        prev_value = strcat(prev_value, ";");
-        prev_value = strcat(prev_value, line);
-      } else {
-        prev_name = strtok_r(line, "=", &line_c);
-        prev_value = strtok_r(NULL, "=", &line_c);
-      }
-    }
-  }
-
-  if (prev_name && prev_value) {
-    gboolean parsed = __preference_set_value(preference, prev_name, prev_value);
-    if (parsed == FALSE) {
-      fprintf(stderr, "could not parse preference2: %s=%s\n", prev_name,
-              prev_value);
+  g_strlcpy(value, g_key_file_get_value(kfile, "Preference", name, &error),
+            sizeof(gchar) * 30);
+  if (error == NULL) {
+    parsed = gdk_rgba_parse(color, value);
+    if (parsed != TRUE) {
+      fprintf(stderr, "could not parse the %s.", name);
       exit(EXIT_FAILURE);
     }
   }
+}
 
+/* Parsing preference file contents */
+Preference *preference_parse(GFile *file) {
+  GKeyFile *kfile;
+  GError *error = NULL;
+  Preference *preference = malloc(sizeof(Preference));
+  gchar *font = malloc(sizeof(gchar) * 256);
+  gchar *font_size = malloc(sizeof(gchar)*30);
+  gdouble opacity;
+  gchar **palette;
+  gboolean parsed = FALSE;
+
+  preference_apply_default(preference);
+  kfile = g_key_file_new();
+  g_key_file_load_from_file(kfile, g_file_get_path(file), G_KEY_FILE_NONE,
+                            &error);
+
+  if (error) {
+    fprintf(stderr, "could not parse the config file: %s\n", error->message);
+    exit(EXIT_FAILURE);
+  }
+
+  preference_color_parse(kfile, "ColorBackground", &preference->background);
+  preference_color_parse(kfile, "ColorForeground", &preference->foreground);
+  preference_color_parse(kfile, "ColorCursor", &preference->cursor);
+  preference_color_parse(kfile, "ColorBold", &preference->bold);
+  g_strlcpy(font,
+            g_key_file_get_value(kfile, "Preference", "FontFamily", &error),
+            sizeof(gchar) * 256);
+  if (error == NULL) {
+    preference->font_family = font;
+  }
+
+  error = NULL;
+  g_strlcpy(font_size, g_key_file_get_value(kfile, "Preference", "FontSize", &error),
+            sizeof(gchar) * 30);
+  if (error == NULL) {
+    preference->font_size = font_size;
+  }
+
+  error = NULL;
+  opacity = g_key_file_get_double(kfile, "Preference", "Opacity", &error);
+  if (error == NULL) {
+    preference->opacity = opacity;
+  }
+
+  error = NULL;
+  gsize palettes[16] = {sizeof(gchar) * 30};
+  palette = g_key_file_get_string_list(kfile, "Preference", "ColorPalette",
+                                       palettes, &error);
+  if (error == NULL) {
+    for (int i = 0; i < 16; i++) {
+      parsed = gdk_rgba_parse(&preference->palette[i], palette[i]);
+      if (parsed != TRUE) {
+        fprintf(stderr, "could not parse the ColorPalette[%d].", i);
+        exit(EXIT_FAILURE);
+      }
+    }
+  }
   return preference;
 }
 
@@ -122,27 +114,6 @@ void preference_apply_default(Preference *preference) {
   }
 }
 
-char *__trimwhitespace(char *str) {
-  char *end;
-
-  while (!(isalpha((unsigned char)*str) || isdigit((unsigned char)*str) ||
-           strchr("=#();", (unsigned char)*str)))
-    str++;
-
-  if (*str == 0)
-    return str;
-
-  end = str + strlen(str) - 1;
-  while (end > str &&
-         !(isalpha((unsigned char)*str) || isdigit((unsigned char)*str) ||
-           strchr("=#();", (unsigned char)*str)))
-    end--;
-
-  end[1] = '\0';
-
-  return str;
-}
-
 typedef struct {
   // Or whatever information that you need
   void (*ptr)(Preference *preference, void *args);
@@ -153,15 +124,10 @@ static void __preference_watch(GFileMonitor *monitor, GFile *file,
                                GFile *other_file, GFileMonitorEvent event_type,
                                gpointer args) {
   preference_watch_args *targs = args;
-  FILE *fd;
   Preference *preference;
 
-  fd = fopen(preference_file_path(), "rb");
-  if (fd) {
-    preference = preference_parse(fd);
-    targs->ptr(preference, targs->args);
-    fclose(fd);
-  }
+  preference = preference_parse(file);
+  targs->ptr(preference, targs->args);
 }
 
 PreferenceWatch *

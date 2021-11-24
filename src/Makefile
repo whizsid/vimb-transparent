@@ -4,9 +4,9 @@ OBJ = $(patsubst %.c, %.o, $(wildcard *.c))
 JSFILES  = $(wildcard scripts/*.js)
 CSSFILES = $(wildcard scripts/*.css)
 
-all: vimb webextension.subdir-all
+all: vimb webextension.subdir-all glassit.subdir-all
 
-clean: webextension.subdir-clean
+clean: webextension.subdir-clean glassit.subdir-clean
 	$(RM) vimb vimb.so $(OBJ)
 	$(RM) scripts/scripts.h
 

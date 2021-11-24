@@ -40,4 +40,10 @@ EXTLDFLAGS  = ${LDFLAGS} $(shell pkg-config --libs webkit2gtk-web-extension-4.0)
 
 # flags used for the main application
 CFLAGS     += $(shell pkg-config --cflags $(LIBS))
-LDFLAGS    += $(shell pkg-config --libs $(LIBS)) -lpthread
+LDFLAGS    += $(shell pkg-config --libs $(LIBS))
+
+# flags used to build glassit web extension
+GITARGET    = glassit.so
+GICFLAGS    = ${CFLAGS} $(shell pkg-config --cflags webkit2gtk-web-extension-4.0)
+GICPPFLAGS  = $(CPPFLAGS)
+GILDFLAGS   = ${LDFLAGS} $(shell pkg-config --libs webkit2gtk-web-extension-4.0) -shared

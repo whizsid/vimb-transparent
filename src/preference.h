@@ -12,13 +12,13 @@ typedef struct{
   GdkRGBA bold;
   double opacity;
   char *font_family;
-  char * font_size;
+  char *font_size;
 } Preference;
 
 PreferenceWatch *preference_watch(void (*ptr)(Preference *preference, void *args),
                            void *args);
 
-Preference *preference_parse(FILE *f);
+Preference *preference_parse(GFile *f);
 
 void preference_apply_default(Preference *preference);
 
